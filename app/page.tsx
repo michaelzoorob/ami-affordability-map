@@ -1,101 +1,154 @@
-import Image from "next/image";
+"use client";
+
+import { useState, useCallback, useMemo } from "react";
+import dynamic from "next/dynamic";
+import SearchBar from "@/components/SearchBar";
+import ResultsPanel from "@/components/ResultsPanel";
+import { IncomeBracket } from "@/lib/census-acs";
+
+const Map = dynamic(() => import("@/components/Map"), { ssr: false });
+
+interface RawApiResponse {
+  // Default calculation
+  incomeThreshold: number;
+  monthlyRent: number;
+  percentCanAfford: number;
+  householdsAboveThreshold: number;
+  totalHouseholds: number;
+  areaName: string;
+  // Raw data for recalculation
+  incomeLimitsBySize: number[];
+  fmrByBedroom: number[];
+  medianBySize: (number | null)[];
+  brackets: IncomeBracket[];
+  medianIncome: number;
+  // Geo
+  lat: number;
+  lng: number;
+  matchedAddress: string;
+  stateFips: string;
+  countyFips: string;
+  tractFips: string;
+  hudYear: string;
+  fmrYear: string;
+}
+
+function recalculate(
+  rawData: RawApiResponse,
+  householdSize: number,
+  bedrooms: number
+) {
+  const fmr = rawData.fmrByBedroom[bedrooms];
+  const incomeNeeded = (fmr * 12) / 0.3;
+  const sizeAdjustedAmi = rawData.incomeLimitsBySize[householdSize - 1];
+
+  let householdsAboveThreshold = 0;
+  for (const bracket of rawData.brackets) {
+    if (bracket.min >= incomeNeeded) {
+      householdsAboveThreshold += bracket.count;
+    } else if (bracket.max >= incomeNeeded && bracket.max !== Infinity) {
+      const bracketWidth = bracket.max - bracket.min + 1;
+      const portionAbove = (bracket.max - incomeNeeded + 1) / bracketWidth;
+      householdsAboveThreshold += bracket.count * portionAbove;
+    } else if (bracket.max === Infinity && bracket.min < incomeNeeded) {
+      householdsAboveThreshold += bracket.count;
+    }
+  }
+
+  const percentCanAfford =
+    rawData.totalHouseholds > 0
+      ? Math.round(
+          (householdsAboveThreshold / rawData.totalHouseholds) * 1000
+        ) / 10
+      : 0;
+
+  // B19019 index: 0 = overall, 1 = 1-person, ..., 7 = 7+-person
+  // For householdSize >= 7, use index 7
+  const medianIndex = Math.min(householdSize, 7);
+  const tractMedian = rawData.medianBySize[medianIndex];
+
+  return {
+    incomeThreshold: incomeNeeded,
+    monthlyRent: fmr,
+    percentCanAfford,
+    householdsAboveThreshold: Math.round(householdsAboveThreshold),
+    totalHouseholds: rawData.totalHouseholds,
+    sizeAdjustedAmi,
+    tractMedian,
+  };
+}
 
 export default function Home() {
-  return (
-    <div className="grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20 font-[family-name:var(--font-geist-sans)]">
-      <main className="flex flex-col gap-8 row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="https://nextjs.org/icons/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="list-inside list-decimal text-sm text-center sm:text-left font-[family-name:var(--font-geist-mono)]">
-          <li className="mb-2">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] px-1 py-0.5 rounded font-semibold">
-              app/page.tsx
-            </code>
-            .
-          </li>
-          <li>Save and see your changes instantly.</li>
-        </ol>
+  const [rawData, setRawData] = useState<RawApiResponse | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [markerPosition, setMarkerPosition] = useState<
+    [number, number] | null
+  >(null);
+  const [householdSize, setHouseholdSize] = useState(4);
+  const [bedrooms, setBedrooms] = useState(2);
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="https://nextjs.org/icons/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:min-w-44"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
+  const handleSearch = useCallback(async (address: string) => {
+    setIsLoading(true);
+    setError(null);
+    setRawData(null);
+
+    try {
+      const res = await fetch(
+        `/api/lookup?address=${encodeURIComponent(address)}`
+      );
+      const data = await res.json();
+
+      if (!res.ok) {
+        setError(data.error || "An error occurred.");
+        return;
+      }
+
+      setRawData(data);
+      setMarkerPosition([data.lat, data.lng]);
+    } catch {
+      setError("Failed to connect to the server. Please try again.");
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  const computed = useMemo(() => {
+    if (!rawData) return null;
+    return recalculate(rawData, householdSize, bedrooms);
+  }, [rawData, householdSize, bedrooms]);
+
+  return (
+    <div className="h-screen flex flex-col">
+      <header className="bg-white shadow-sm px-6 py-4">
+        <h1 className="text-xl font-bold text-gray-900 mb-3">
+          AMI Affordability Map
+        </h1>
+        <SearchBar onSearch={handleSearch} isLoading={isLoading} />
+      </header>
+
+      <div className="flex-1 flex flex-col md:flex-row overflow-hidden">
+        <div className="flex-1 min-h-[300px]">
+          <Map
+            center={[39.8283, -98.5795]}
+            markerPosition={markerPosition}
+            markerLabel={rawData?.matchedAddress}
+          />
         </div>
-      </main>
-      <footer className="row-start-3 flex gap-6 flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="https://nextjs.org/icons/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
+
+        <div className="md:w-96 p-4 overflow-y-auto bg-gray-50">
+          <ResultsPanel
+            rawData={rawData}
+            computed={computed}
+            error={error}
+            isLoading={isLoading}
+            householdSize={householdSize}
+            bedrooms={bedrooms}
+            onHouseholdSizeChange={setHouseholdSize}
+            onBedroomsChange={setBedrooms}
           />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="https://nextjs.org/icons/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="https://nextjs.org/icons/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
+        </div>
+      </div>
     </div>
   );
 }
