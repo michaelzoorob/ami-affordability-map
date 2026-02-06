@@ -1,14 +1,19 @@
 "use client";
 
-import { useState, FormEvent } from "react";
+import { useState, useEffect, FormEvent } from "react";
 
 interface SearchBarProps {
   onSearch: (address: string) => void;
   isLoading: boolean;
+  initialAddress?: string;
 }
 
-export default function SearchBar({ onSearch, isLoading }: SearchBarProps) {
+export default function SearchBar({ onSearch, isLoading, initialAddress }: SearchBarProps) {
   const [address, setAddress] = useState("");
+
+  useEffect(() => {
+    if (initialAddress) setAddress(initialAddress);
+  }, [initialAddress]);
 
   function handleSubmit(e: FormEvent) {
     e.preventDefault();

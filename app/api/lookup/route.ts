@@ -22,8 +22,8 @@ export async function GET(request: NextRequest) {
     // Step 2: Fetch all data in parallel
     const [incomeData, hudData, fmrData, medianData] = await Promise.all([
       fetchIncomeDistribution(geo.stateFips, geo.countyFips, geo.tractFips),
-      fetchAreaMedianIncome(geo.stateFips, geo.countyFips),
-      fetchFairMarketRents(geo.stateFips, geo.countyFips),
+      fetchAreaMedianIncome(geo.stateFips, geo.countyFips, geo.countySubFips),
+      fetchFairMarketRents(geo.stateFips, geo.countyFips, geo.countySubFips),
       fetchMedianByHouseholdSize(geo.stateFips, geo.countyFips, geo.tractFips),
     ]);
 

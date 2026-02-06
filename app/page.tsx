@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useMemo } from "react";
+import { useState, useCallback, useMemo, useEffect, useRef } from "react";
 import dynamic from "next/dynamic";
 import SearchBar from "@/components/SearchBar";
 import ResultsPanel from "@/components/ResultsPanel";
@@ -33,6 +33,38 @@ interface RawApiResponse {
   fmrYear: string;
 }
 
+export interface AmiTableRow {
+  amiPercent: number;
+  income: number;
+  rent: number;
+  percentCanAfford: number;
+}
+
+function interpolatePercentAbove(
+  incomeThreshold: number,
+  brackets: IncomeBracket[],
+  totalHouseholds: number
+): number {
+  if (totalHouseholds === 0) return 0;
+
+  let householdsAbove = 0;
+  for (const bracket of brackets) {
+    if (bracket.min >= incomeThreshold) {
+      householdsAbove += bracket.count;
+    } else if (bracket.max >= incomeThreshold && bracket.max !== Infinity) {
+      const bracketWidth = bracket.max - bracket.min + 1;
+      const portionAbove = (bracket.max - incomeThreshold + 1) / bracketWidth;
+      householdsAbove += bracket.count * portionAbove;
+    } else if (bracket.max === Infinity && bracket.min < incomeThreshold) {
+      householdsAbove += bracket.count;
+    }
+  }
+
+  return Math.round((householdsAbove / totalHouseholds) * 1000) / 10;
+}
+
+const AMI_PERCENTS = [30, 40, 50, 60, 70, 80, 90, 100, 110, 120, 130, 140, 150];
+
 function recalculate(
   rawData: RawApiResponse,
   householdSize: number,
@@ -41,6 +73,12 @@ function recalculate(
   const fmr = rawData.fmrByBedroom[bedrooms];
   const incomeNeeded = (fmr * 12) / 0.3;
   const sizeAdjustedAmi = rawData.incomeLimitsBySize[householdSize - 1];
+
+  const percentCanAfford = interpolatePercentAbove(
+    incomeNeeded,
+    rawData.brackets,
+    rawData.totalHouseholds
+  );
 
   let householdsAboveThreshold = 0;
   for (const bracket of rawData.brackets) {
@@ -55,17 +93,26 @@ function recalculate(
     }
   }
 
-  const percentCanAfford =
-    rawData.totalHouseholds > 0
-      ? Math.round(
-          (householdsAboveThreshold / rawData.totalHouseholds) * 1000
-        ) / 10
-      : 0;
-
   // B19019 index: 0 = overall, 1 = 1-person, ..., 7 = 7+-person
   // For householdSize >= 7, use index 7
   const medianIndex = Math.min(householdSize, 7);
   const tractMedian = rawData.medianBySize[medianIndex];
+
+  // AMI affordability table
+  const amiTable: AmiTableRow[] = AMI_PERCENTS.map((pct) => {
+    const income = sizeAdjustedAmi * pct / 100;
+    const rent = income * 0.30 / 12;
+    return {
+      amiPercent: pct,
+      income: Math.round(income),
+      rent: Math.round(rent),
+      percentCanAfford: interpolatePercentAbove(
+        income,
+        rawData.brackets,
+        rawData.totalHouseholds
+      ),
+    };
+  });
 
   return {
     incomeThreshold: incomeNeeded,
@@ -75,6 +122,7 @@ function recalculate(
     totalHouseholds: rawData.totalHouseholds,
     sizeAdjustedAmi,
     tractMedian,
+    amiTable,
   };
 }
 
@@ -87,6 +135,21 @@ export default function Home() {
   >(null);
   const [householdSize, setHouseholdSize] = useState(4);
   const [bedrooms, setBedrooms] = useState(2);
+  const [currentAddress, setCurrentAddress] = useState<string | null>(null);
+  const [initialAddress, setInitialAddress] = useState<string | undefined>(undefined);
+  const initializedFromUrl = useRef(false);
+
+  // Update URL query params whenever search state changes
+  const updateUrl = useCallback(
+    (address: string, hh: number, br: number) => {
+      const params = new URLSearchParams();
+      params.set("address", address);
+      params.set("household", String(hh));
+      params.set("bedrooms", String(br));
+      window.history.replaceState(null, "", `?${params.toString()}`);
+    },
+    []
+  );
 
   const handleSearch = useCallback(async (address: string) => {
     setIsLoading(true);
@@ -105,6 +168,7 @@ export default function Home() {
       }
 
       setRawData(data);
+      setCurrentAddress(address);
       setMarkerPosition([data.lat, data.lng]);
     } catch {
       setError("Failed to connect to the server. Please try again.");
@@ -112,6 +176,31 @@ export default function Home() {
       setIsLoading(false);
     }
   }, []);
+
+  // Sync URL when search state changes
+  useEffect(() => {
+    if (currentAddress) {
+      updateUrl(currentAddress, householdSize, bedrooms);
+    }
+  }, [currentAddress, householdSize, bedrooms, updateUrl]);
+
+  // On mount, restore state from URL params and auto-search
+  useEffect(() => {
+    if (initializedFromUrl.current) return;
+    initializedFromUrl.current = true;
+
+    const params = new URLSearchParams(window.location.search);
+    const address = params.get("address");
+    if (!address) return;
+
+    const hh = parseInt(params.get("household") || "", 10);
+    const br = parseInt(params.get("bedrooms") || "", 10);
+    if (hh >= 1 && hh <= 8) setHouseholdSize(hh);
+    if (br >= 0 && br <= 4) setBedrooms(br);
+
+    setInitialAddress(address);
+    handleSearch(address);
+  }, [handleSearch]);
 
   const computed = useMemo(() => {
     if (!rawData) return null;
@@ -124,7 +213,7 @@ export default function Home() {
         <h1 className="text-xl font-bold text-gray-900 mb-3">
           AMI Affordability Map
         </h1>
-        <SearchBar onSearch={handleSearch} isLoading={isLoading} />
+        <SearchBar onSearch={handleSearch} isLoading={isLoading} initialAddress={initialAddress} />
       </header>
 
       <div className="flex-1 flex flex-col md:flex-row overflow-hidden">

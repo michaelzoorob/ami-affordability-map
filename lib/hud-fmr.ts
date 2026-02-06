@@ -3,16 +3,25 @@ export interface HudFmrData {
   year: string;
 }
 
+// New England states use town/county subdivision instead of county for HUD lookups
+const NEW_ENGLAND_STATES = new Set(["09", "23", "25", "33", "44", "50"]);
+
 export async function fetchFairMarketRents(
   stateFips: string,
-  countyFips: string
+  countyFips: string,
+  countySubFips?: string
 ): Promise<HudFmrData> {
   const token = process.env.HUD_API_TOKEN;
   if (!token) {
     throw new Error("HUD_API_TOKEN environment variable is not set.");
   }
 
-  const entityId = `${stateFips}${countyFips}99999`;
+  // New England states: {stateFIPS}{countyFIPS}{COUSUB} (10 digits)
+  // Other states: {stateFIPS}{countyFIPS}99999 (10 digits)
+  const suffix = NEW_ENGLAND_STATES.has(stateFips) && countySubFips
+    ? countySubFips
+    : "99999";
+  const entityId = `${stateFips}${countyFips}${suffix}`;
   const url = `https://www.huduser.gov/hudapi/public/fmr/data/${entityId}`;
 
   const res = await fetch(url, {

@@ -4,6 +4,7 @@ export interface GeocodeResult {
   stateFips: string;
   countyFips: string;
   tractFips: string;
+  countySubFips?: string;
   matchedAddress: string;
 }
 
@@ -36,12 +37,17 @@ export async function geocodeAddress(address: string): Promise<GeocodeResult> {
     throw new Error("Could not determine Census tract for this address.");
   }
 
+  // Extract county subdivision FIPS for New England states
+  const countySubGeo = match.geographies?.["County Subdivisions"]?.[0];
+  const countySubFips: string | undefined = countySubGeo?.COUSUB;
+
   return {
     lat: coords.y,
     lng: coords.x,
     stateFips: geos.STATE,
     countyFips: geos.COUNTY,
     tractFips: geos.TRACT,
+    countySubFips,
     matchedAddress: match.matchedAddress,
   };
 }

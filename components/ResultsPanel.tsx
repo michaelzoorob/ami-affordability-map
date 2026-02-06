@@ -1,6 +1,7 @@
 "use client";
 
 import { IncomeBracket } from "@/lib/census-acs";
+import { AmiTableRow } from "@/app/page";
 
 interface RawApiResponse {
   incomeThreshold: number;
@@ -32,6 +33,7 @@ interface ComputedResult {
   totalHouseholds: number;
   sizeAdjustedAmi: number;
   tractMedian: number | null;
+  amiTable: AmiTableRow[];
 }
 
 interface ResultsPanelProps {
@@ -223,6 +225,52 @@ export default function ResultsPanel({
             (B19019)
           </p>
         </div>
+      </div>
+
+      {/* AMI Affordability Table */}
+      <div>
+        <h3 className="text-sm font-semibold text-gray-700 mb-2">
+          Affordability by AMI Level ({householdSize}-person household)
+        </h3>
+        <div className="overflow-x-auto">
+          <table className="w-full text-xs border-collapse">
+            <thead>
+              <tr className="bg-gray-100">
+                <th className="text-left px-2 py-1.5 font-medium text-gray-600">AMI %</th>
+                <th className="text-right px-2 py-1.5 font-medium text-gray-600">Income</th>
+                <th className="text-right px-2 py-1.5 font-medium text-gray-600">Rent</th>
+                <th className="text-right px-2 py-1.5 font-medium text-gray-600">Can Afford</th>
+              </tr>
+            </thead>
+            <tbody>
+              {computed.amiTable.map((row) => (
+                <tr
+                  key={row.amiPercent}
+                  className={
+                    row.amiPercent === 100
+                      ? "bg-purple-50 font-medium"
+                      : "even:bg-gray-50"
+                  }
+                >
+                  <td className="px-2 py-1.5 text-gray-700">{row.amiPercent}%</td>
+                  <td className="px-2 py-1.5 text-right text-gray-700">
+                    {formatCurrency(row.income)}
+                  </td>
+                  <td className="px-2 py-1.5 text-right text-gray-700">
+                    {formatCurrency(row.rent)}/mo
+                  </td>
+                  <td className="px-2 py-1.5 text-right text-gray-700">
+                    {row.percentCanAfford}%
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <p className="text-xs text-gray-400 mt-1">
+          Rent = 30% of income. &ldquo;Can Afford&rdquo; = % of tract households
+          earning at least that income.
+        </p>
       </div>
 
       <p className="text-xs text-gray-400">
