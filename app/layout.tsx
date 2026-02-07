@@ -2,9 +2,9 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "AMI Affordability Map",
+  title: "Who Can Afford to Live Here?",
   description:
-    "Look up Area Median Income and housing affordability by Census tract",
+    "Explore housing affordability by neighborhood — see what % of households can afford rent at every AMI level",
 };
 
 export default function RootLayout({

@@ -49,13 +49,15 @@ function interpolatePercentAbove(
 
   let householdsAbove = 0;
   for (const bracket of brackets) {
+    const isTopBracket = bracket.max === Infinity || bracket.max == null;
     if (bracket.min >= incomeThreshold) {
       householdsAbove += bracket.count;
-    } else if (bracket.max >= incomeThreshold && bracket.max !== Infinity) {
+    } else if (!isTopBracket && bracket.max >= incomeThreshold) {
       const bracketWidth = bracket.max - bracket.min + 1;
       const portionAbove = (bracket.max - incomeThreshold + 1) / bracketWidth;
       householdsAbove += bracket.count * portionAbove;
-    } else if (bracket.max === Infinity && bracket.min < incomeThreshold) {
+    } else if (isTopBracket && bracket.min < incomeThreshold) {
+      // Top bracket ($200k+): assume all are above any threshold
       householdsAbove += bracket.count;
     }
   }
@@ -82,13 +84,14 @@ function recalculate(
 
   let householdsAboveThreshold = 0;
   for (const bracket of rawData.brackets) {
+    const isTopBracket = bracket.max === Infinity || bracket.max == null;
     if (bracket.min >= incomeNeeded) {
       householdsAboveThreshold += bracket.count;
-    } else if (bracket.max >= incomeNeeded && bracket.max !== Infinity) {
+    } else if (!isTopBracket && bracket.max >= incomeNeeded) {
       const bracketWidth = bracket.max - bracket.min + 1;
       const portionAbove = (bracket.max - incomeNeeded + 1) / bracketWidth;
       householdsAboveThreshold += bracket.count * portionAbove;
-    } else if (bracket.max === Infinity && bracket.min < incomeNeeded) {
+    } else if (isTopBracket && bracket.min < incomeNeeded) {
       householdsAboveThreshold += bracket.count;
     }
   }
@@ -202,6 +205,36 @@ export default function Home() {
     handleSearch(address);
   }, [handleSearch]);
 
+  const handleMapClick = useCallback(
+    async (lat: number, lng: number) => {
+      setIsLoading(true);
+      setError(null);
+      setRawData(null);
+
+      try {
+        const res = await fetch(
+          `/api/lookup?lat=${lat}&lng=${lng}`
+        );
+        const data = await res.json();
+
+        if (!res.ok) {
+          setError(data.error || "Could not find data at this location.");
+          return;
+        }
+
+        setRawData(data);
+        setCurrentAddress(data.matchedAddress);
+        setInitialAddress(data.matchedAddress);
+        setMarkerPosition([data.lat, data.lng]);
+      } catch {
+        setError("Failed to look up this location. Please try again.");
+      } finally {
+        setIsLoading(false);
+      }
+    },
+    []
+  );
+
   const computed = useMemo(() => {
     if (!rawData) return null;
     return recalculate(rawData, householdSize, bedrooms);
@@ -210,9 +243,12 @@ export default function Home() {
   return (
     <div className="h-screen flex flex-col">
       <header className="bg-white shadow-sm px-6 py-4">
-        <h1 className="text-xl font-bold text-gray-900 mb-3">
-          AMI Affordability Map
+        <h1 className="text-xl font-bold text-gray-900">
+          Who Can Afford to Live Here?
         </h1>
+        <p className="text-sm text-gray-500 mb-3">
+          Comparing Census Tract Incomes with Regional AMI
+        </p>
         <SearchBar onSearch={handleSearch} isLoading={isLoading} initialAddress={initialAddress} />
       </header>
 
@@ -222,6 +258,7 @@ export default function Home() {
             center={[39.8283, -98.5795]}
             markerPosition={markerPosition}
             markerLabel={rawData?.matchedAddress}
+            onMapClick={handleMapClick}
           />
         </div>
 

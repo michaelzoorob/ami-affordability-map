@@ -1,6 +1,6 @@
 "use client";
 
-import { MapContainer, TileLayer, Marker, Popup, useMap } from "react-leaflet";
+import { MapContainer, TileLayer, Marker, Popup, useMap, useMapEvents } from "react-leaflet";
 import L from "leaflet";
 import { useEffect } from "react";
 
@@ -22,6 +22,7 @@ interface MapProps {
   center: [number, number];
   markerPosition: [number, number] | null;
   markerLabel?: string;
+  onMapClick?: (lat: number, lng: number) => void;
 }
 
 function FlyToMarker({ position }: { position: [number, number] }) {
@@ -32,7 +33,16 @@ function FlyToMarker({ position }: { position: [number, number] }) {
   return null;
 }
 
-export default function Map({ center, markerPosition, markerLabel }: MapProps) {
+function MapClickHandler({ onClick }: { onClick: (lat: number, lng: number) => void }) {
+  useMapEvents({
+    click(e) {
+      onClick(e.latlng.lat, e.latlng.lng);
+    },
+  });
+  return null;
+}
+
+export default function Map({ center, markerPosition, markerLabel, onMapClick }: MapProps) {
   return (
     <MapContainer
       center={center}
@@ -44,6 +54,7 @@ export default function Map({ center, markerPosition, markerLabel }: MapProps) {
         attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
         url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
       />
+      {onMapClick && <MapClickHandler onClick={onMapClick} />}
       {markerPosition && (
         <>
           <FlyToMarker position={markerPosition} />

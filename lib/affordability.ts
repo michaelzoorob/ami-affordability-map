@@ -38,15 +38,16 @@ export function calculateAffordability(
   let householdsAboveThreshold = 0;
 
   for (const bracket of brackets) {
+    const isTopBracket = bracket.max === Infinity || bracket.max == null;
     if (bracket.min >= incomeThreshold) {
       // Entire bracket is above threshold
       householdsAboveThreshold += bracket.count;
-    } else if (bracket.max >= incomeThreshold && bracket.max !== Infinity) {
+    } else if (!isTopBracket && bracket.max >= incomeThreshold) {
       // Threshold falls within this bracket — interpolate
       const bracketWidth = bracket.max - bracket.min + 1;
       const portionAbove = (bracket.max - incomeThreshold + 1) / bracketWidth;
       householdsAboveThreshold += bracket.count * portionAbove;
-    } else if (bracket.max === Infinity && bracket.min < incomeThreshold) {
+    } else if (isTopBracket && bracket.min < incomeThreshold) {
       // Top bracket ($200k+) — assume all are above
       householdsAboveThreshold += bracket.count;
     }

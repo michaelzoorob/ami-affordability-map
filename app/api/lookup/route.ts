@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { geocodeAddress } from "@/lib/census-geocoder";
+import { geocodeAddress, reverseGeocodeCoordinates } from "@/lib/census-geocoder";
 import { fetchIncomeDistribution, fetchMedianByHouseholdSize } from "@/lib/census-acs";
 import { fetchAreaMedianIncome } from "@/lib/hud-api";
 import { fetchFairMarketRents } from "@/lib/hud-fmr";
@@ -7,17 +7,21 @@ import { calculateAffordability } from "@/lib/affordability";
 
 export async function GET(request: NextRequest) {
   const address = request.nextUrl.searchParams.get("address");
+  const lat = request.nextUrl.searchParams.get("lat");
+  const lng = request.nextUrl.searchParams.get("lng");
 
-  if (!address || address.trim().length === 0) {
+  if ((!address || address.trim().length === 0) && (!lat || !lng)) {
     return NextResponse.json(
-      { error: "Please provide an address." },
+      { error: "Please provide an address or lat/lng coordinates." },
       { status: 400 }
     );
   }
 
   try {
-    // Step 1: Geocode address and get tract info
-    const geo = await geocodeAddress(address);
+    // Step 1: Geocode address (or reverse-geocode coordinates) to get tract info
+    const geo = lat && lng
+      ? await reverseGeocodeCoordinates(parseFloat(lat), parseFloat(lng))
+      : await geocodeAddress(address!);
 
     // Step 2: Fetch all data in parallel
     const [incomeData, hudData, fmrData, medianData] = await Promise.all([

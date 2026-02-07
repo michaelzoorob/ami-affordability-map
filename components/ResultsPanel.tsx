@@ -195,6 +195,9 @@ export default function ResultsPanel({
           {computed.totalHouseholds.toLocaleString()} households in this tract
           earn {formatCurrency(Math.round(computed.incomeThreshold))} or more
         </p>
+        <p className="text-xs text-amber-500 mt-1 italic">
+          Based on all households in tract, regardless of size
+        </p>
       </div>
 
       {/* Context: AMI and tract median */}
