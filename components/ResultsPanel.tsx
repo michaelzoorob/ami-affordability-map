@@ -221,7 +221,7 @@ export default function ResultsPanel({
           <p className="text-xl font-bold text-gray-900">
             {computed.tractMedian !== null
               ? formatCurrency(computed.tractMedian)
-              : "N/A"}
+              : "Too few households"}
           </p>
           <p className="text-xs text-gray-600">
             {householdSize >= 7 ? "7+" : householdSize}-person households
