@@ -65,7 +65,54 @@ export async function reverseGeocodeCoordinates(
   };
 }
 
+/**
+ * Primary geocoding: Nominatim → Census coordinate API for FIPS.
+ * Fallback: Census forward geocoder (strict but authoritative for US street addresses).
+ */
 export async function geocodeAddress(address: string): Promise<GeocodeResult> {
+  // Try Nominatim first — handles building names, landmarks, neighborhoods, etc.
+  try {
+    const nomResult = await nominatimForwardGeocode(address);
+    if (nomResult) {
+      return await reverseGeocodeCoordinates(
+        nomResult.lat,
+        nomResult.lng,
+      );
+    }
+  } catch {
+    // Nominatim failed — fall through to Census
+  }
+
+  // Fallback: Census forward geocoder
+  return censusForwardGeocode(address);
+}
+
+async function nominatimForwardGeocode(
+  address: string
+): Promise<{ lat: number; lng: number } | null> {
+  const url = new URL("https://nominatim.openstreetmap.org/search");
+  url.searchParams.set("q", address);
+  url.searchParams.set("format", "json");
+  url.searchParams.set("limit", "1");
+  url.searchParams.set("countrycodes", "us");
+
+  const res = await fetch(url.toString(), {
+    headers: { "User-Agent": "AMI-Affordability-Map/1.0" },
+  });
+
+  if (!res.ok) return null;
+
+  const results = await res.json();
+  if (!results || results.length === 0) return null;
+
+  const lat = parseFloat(results[0].lat);
+  const lng = parseFloat(results[0].lon);
+  if (isNaN(lat) || isNaN(lng)) return null;
+
+  return { lat, lng };
+}
+
+async function censusForwardGeocode(address: string): Promise<GeocodeResult> {
   const url = new URL(
     "https://geocoding.geo.census.gov/geocoder/geographies/onelineaddress"
   );
@@ -94,7 +141,6 @@ export async function geocodeAddress(address: string): Promise<GeocodeResult> {
     throw new Error("Could not determine Census tract for this address.");
   }
 
-  // Extract county subdivision FIPS for New England states
   const countySubGeo = match.geographies?.["County Subdivisions"]?.[0];
   const countySubFips: string | undefined = countySubGeo?.COUSUB;
 
