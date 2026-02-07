@@ -243,6 +243,7 @@ export default function ResultsPanel({
                 <th className="text-right px-2 py-1.5 font-medium text-gray-600">Income</th>
                 <th className="text-right px-2 py-1.5 font-medium text-gray-600">Rent</th>
                 <th className="text-right px-2 py-1.5 font-medium text-gray-600">Can Afford</th>
+                <th className="text-right px-2 py-1.5 font-medium text-gray-600">Feasible</th>
               </tr>
             </thead>
             <tbody>
@@ -265,6 +266,9 @@ export default function ResultsPanel({
                   <td className="px-2 py-1.5 text-right text-gray-700">
                     {row.percentCanAfford}%
                   </td>
+                  <td className="px-2 py-1.5 text-right text-gray-700">
+                    {row.percentFeasible}%
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -272,7 +276,8 @@ export default function ResultsPanel({
         </div>
         <p className="text-xs text-gray-400 mt-1">
           Rent = 30% of income. &ldquo;Can Afford&rdquo; = % of tract households
-          earning at least that income.
+          earning at least that income. &ldquo;Feasible&rdquo; = % eligible
+          (earning ≤ the AMI level) for whom rent is ≤ 40% of income.
         </p>
       </div>
 

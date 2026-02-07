@@ -38,6 +38,7 @@ export interface AmiTableRow {
   income: number;
   rent: number;
   percentCanAfford: number;
+  percentFeasible: number;
 }
 
 function interpolatePercentAbove(
@@ -102,18 +103,29 @@ function recalculate(
   const tractMedian = rawData.medianBySize[medianIndex];
 
   // AMI affordability table
+  // "Eligible & feasible" band: earns ≤ AMI ceiling (eligible) but rent
+  // doesn't exceed 40% of income (feasible). Floor = ceiling * 0.75
+  // because rent = ceiling * 0.30/12, and ceiling * 0.30 / 0.40 = ceiling * 0.75.
   const amiTable: AmiTableRow[] = AMI_PERCENTS.map((pct) => {
     const income = sizeAdjustedAmi * pct / 100;
     const rent = income * 0.30 / 12;
+    const floor = income * 0.75; // income where rent = 40% of income
+    const pctAboveFloor = interpolatePercentAbove(
+      floor,
+      rawData.brackets,
+      rawData.totalHouseholds
+    );
+    const pctAboveCeiling = interpolatePercentAbove(
+      income,
+      rawData.brackets,
+      rawData.totalHouseholds
+    );
     return {
       amiPercent: pct,
       income: Math.round(income),
       rent: Math.round(rent),
-      percentCanAfford: interpolatePercentAbove(
-        income,
-        rawData.brackets,
-        rawData.totalHouseholds
-      ),
+      percentCanAfford: pctAboveCeiling,
+      percentFeasible: Math.round((pctAboveFloor - pctAboveCeiling) * 10) / 10,
     };
   });
 
