@@ -8,6 +8,7 @@ interface CbsaInfo {
 
 // Cache loaded data in memory across requests (within same serverless instance)
 let countyToCbsa: Record<string, CbsaInfo> | null = null;
+let tractToZip: Record<string, string> | null = null;
 const msaCache = new Map<string, (string | number)[][]>();
 
 const BRACKET_BOUNDS: [number, number][] = [
@@ -34,6 +35,13 @@ function loadCountyToCbsa(): Record<string, CbsaInfo> {
   const filePath = join(process.cwd(), "data", "county-to-cbsa.json");
   countyToCbsa = JSON.parse(readFileSync(filePath, "utf-8"));
   return countyToCbsa!;
+}
+
+function loadTractToZip(): Record<string, string> {
+  if (tractToZip) return tractToZip;
+  const filePath = join(process.cwd(), "data", "tract-to-zip.json");
+  tractToZip = JSON.parse(readFileSync(filePath, "utf-8"));
+  return tractToZip!;
 }
 
 function loadMsaData(cbsaCode: string): (string | number)[][] | null {
@@ -81,11 +89,21 @@ export interface PercentileResult {
   cbsaName: string;
 }
 
+/**
+ * Compute how this tract's affordability % ranks among all tracts in its MSA.
+ *
+ * @param safmrByZip - When provided (SAFMR area), each tract is evaluated
+ *   against its own ZIP's rent rather than a uniform threshold. Keys are
+ *   5-digit ZIP codes, values are FMR arrays [studio, 1BR, 2BR, 3BR, 4BR].
+ * @param bedroomIndex - Which bedroom count to use for SAFMR lookup (default 2 = 2BR).
+ */
 export function computeMsaPercentile(
   stateFips: string,
   countyFips: string,
   tractFips: string,
-  incomeThreshold: number
+  incomeThreshold: number,
+  safmrByZip?: Record<string, number[]>,
+  bedroomIndex: number = 2
 ): PercentileResult | null {
   const mapping = loadCountyToCbsa();
   const countyKey = `${stateFips}${countyFips}`;
@@ -97,6 +115,9 @@ export function computeMsaPercentile(
 
   const targetFips = `${stateFips}${countyFips}${tractFips}`;
 
+  // Load tract-to-ZIP mapping if we have SAFMR data
+  const zipMapping = safmrByZip ? loadTractToZip() : null;
+
   // Compute affordability % for every tract in the MSA
   const tractPcts: number[] = [];
   let targetPct: number | null = null;
@@ -106,7 +127,21 @@ export function computeMsaPercentile(
     const total = tract[1] as number;
     const brackets = (tract as number[]).slice(2);
 
-    const pct = computeAffordabilityPct(incomeThreshold, total, brackets);
+    let threshold = incomeThreshold;
+
+    if (safmrByZip && zipMapping) {
+      // Use this tract's own ZIP's SAFMR to compute a local threshold
+      const zip = zipMapping[fips];
+      if (zip && safmrByZip[zip]) {
+        const localFmr = safmrByZip[zip][bedroomIndex];
+        if (localFmr) {
+          threshold = (localFmr * 12) / 0.3;
+        }
+      }
+      // If no ZIP match, fall back to the uniform incomeThreshold (MSA-level FMR)
+    }
+
+    const pct = computeAffordabilityPct(threshold, total, brackets);
     tractPcts.push(pct);
 
     if (fips === targetFips) {

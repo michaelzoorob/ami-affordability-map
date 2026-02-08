@@ -23,6 +23,8 @@ interface RawApiResponse {
   tractFips: string;
   hudYear: string;
   fmrYear: string;
+  isSafmr: boolean;
+  fmrZipCode: string | null;
   msaPercentile: number | null;
   msaTractCount: number | null;
   cbsaName: string | null;
@@ -161,7 +163,7 @@ export default function ResultsPanel({
       <div className="grid grid-cols-2 gap-4">
         <div className="bg-green-50 rounded-lg p-4">
           <p className="text-xs text-green-600 font-medium uppercase tracking-wide">
-            Fair Market Rent ({rawData.fmrYear})
+            {rawData.isSafmr ? "Small Area FMR" : "Fair Market Rent"} ({rawData.fmrYear})
           </p>
           <p className="text-2xl font-bold text-green-900">
             {formatCurrency(computed.monthlyRent)}
@@ -169,6 +171,9 @@ export default function ResultsPanel({
           </p>
           <p className="text-xs text-green-600">
             {BEDROOM_LABELS[bedrooms]} unit
+            {rawData.isSafmr && rawData.fmrZipCode
+              ? ` \u00B7 ZIP ${rawData.fmrZipCode}`
+              : ""}
           </p>
         </div>
 
@@ -180,7 +185,7 @@ export default function ResultsPanel({
             {formatCurrency(Math.round(computed.incomeThreshold))}
           </p>
           <p className="text-xs text-blue-600">
-            to afford FMR at 30% of income
+            to afford {rawData.isSafmr ? "SAFMR" : "FMR"} at 30% of income
           </p>
         </div>
       </div>
@@ -206,6 +211,9 @@ export default function ResultsPanel({
             Higher than {rawData.msaPercentile}% of{" "}
             {rawData.msaTractCount.toLocaleString()} tracts in{" "}
             {rawData.cbsaName} metro
+            {rawData.isSafmr
+              ? " (each tract compared to its own local rent)"
+              : ""}
           </p>
         )}
       </div>
@@ -293,7 +301,8 @@ export default function ResultsPanel({
       </div>
 
       <p className="text-xs text-gray-400">
-        Sources: HUD Income Limits ({rawData.hudYear}), HUD Fair Market Rents (
+        Sources: HUD Income Limits ({rawData.hudYear}), HUD{" "}
+        {rawData.isSafmr ? "Small Area " : ""}Fair Market Rents (
         {rawData.fmrYear}), ACS 5-Year Estimates (Tables B19001, B19019), Census
         Bureau Geocoder
       </p>

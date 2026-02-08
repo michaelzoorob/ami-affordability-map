@@ -31,6 +31,9 @@ interface RawApiResponse {
   tractFips: string;
   hudYear: string;
   fmrYear: string;
+  // SAFMR
+  isSafmr: boolean;
+  fmrZipCode: string | null;
   // MSA percentile
   msaPercentile: number | null;
   msaTractCount: number | null;

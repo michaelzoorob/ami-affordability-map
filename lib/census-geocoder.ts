@@ -5,6 +5,7 @@ export interface GeocodeResult {
   countyFips: string;
   tractFips: string;
   countySubFips?: string;
+  zipCode?: string;
   matchedAddress: string;
 }
 
@@ -37,10 +38,11 @@ export async function reverseGeocodeCoordinates(
   const countySubGeo = censusData?.result?.geographies?.["County Subdivisions"]?.[0];
   const countySubFips: string | undefined = countySubGeo?.COUSUB;
 
-  // Step 2: Get a display address from Nominatim
+  // Step 2: Get a display address and ZIP code from Nominatim
   let displayAddress = `${lat.toFixed(4)}, ${lng.toFixed(4)}`;
+  let zipCode: string | undefined;
   try {
-    const nomUrl = `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json&zoom=18`;
+    const nomUrl = `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json&zoom=18&addressdetails=1`;
     const nomRes = await fetch(nomUrl, {
       headers: { "User-Agent": "AMI-Affordability-Map/1.0" },
     });
@@ -48,6 +50,10 @@ export async function reverseGeocodeCoordinates(
       const nomData = await nomRes.json();
       if (nomData?.display_name) {
         displayAddress = nomData.display_name;
+      }
+      if (nomData?.address?.postcode) {
+        // Take the first 5 digits (some postcodes include ZIP+4)
+        zipCode = nomData.address.postcode.slice(0, 5);
       }
     }
   } catch {
@@ -61,6 +67,7 @@ export async function reverseGeocodeCoordinates(
     countyFips: geos.COUNTY,
     tractFips: geos.TRACT,
     countySubFips,
+    zipCode,
     matchedAddress: displayAddress,
   };
 }
@@ -144,6 +151,23 @@ async function censusForwardGeocode(address: string): Promise<GeocodeResult> {
   const countySubGeo = match.geographies?.["County Subdivisions"]?.[0];
   const countySubFips: string | undefined = countySubGeo?.COUSUB;
 
+  // Try to get ZIP code via Nominatim reverse geocode
+  let zipCode: string | undefined;
+  try {
+    const nomUrl = `https://nominatim.openstreetmap.org/reverse?lat=${coords.y}&lon=${coords.x}&format=json&zoom=18&addressdetails=1`;
+    const nomRes = await fetch(nomUrl, {
+      headers: { "User-Agent": "AMI-Affordability-Map/1.0" },
+    });
+    if (nomRes.ok) {
+      const nomData = await nomRes.json();
+      if (nomData?.address?.postcode) {
+        zipCode = nomData.address.postcode.slice(0, 5);
+      }
+    }
+  } catch {
+    // ZIP code is best-effort
+  }
+
   return {
     lat: coords.y,
     lng: coords.x,
@@ -151,6 +175,7 @@ async function censusForwardGeocode(address: string): Promise<GeocodeResult> {
     countyFips: geos.COUNTY,
     tractFips: geos.TRACT,
     countySubFips,
+    zipCode,
     matchedAddress: match.matchedAddress,
   };
 }
