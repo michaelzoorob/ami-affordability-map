@@ -4,6 +4,7 @@ import { fetchIncomeDistribution, fetchMedianByHouseholdSize } from "@/lib/censu
 import { fetchAreaMedianIncome } from "@/lib/hud-api";
 import { fetchFairMarketRents } from "@/lib/hud-fmr";
 import { calculateAffordability } from "@/lib/affordability";
+import { computeMsaPercentile } from "@/lib/msa-percentile";
 
 export async function GET(request: NextRequest) {
   const address = request.nextUrl.searchParams.get("address");
@@ -43,6 +44,14 @@ export async function GET(request: NextRequest) {
       hudData.areaName
     );
 
+    // Step 4: Compute MSA percentile for the default FMR affordability
+    const msaPercentile = computeMsaPercentile(
+      geo.stateFips,
+      geo.countyFips,
+      geo.tractFips,
+      defaultIncomeNeeded
+    );
+
     return NextResponse.json({
       // Default calculation result
       ...defaultResult,
@@ -61,6 +70,10 @@ export async function GET(request: NextRequest) {
       hudYear: hudData.year,
       fmrYear: fmrData.year,
       medianIncome: hudData.medianIncome,
+      // MSA percentile context
+      msaPercentile: msaPercentile?.percentile ?? null,
+      msaTractCount: msaPercentile?.msaTractCount ?? null,
+      cbsaName: msaPercentile?.cbsaName ?? null,
     });
   } catch (err) {
     const message =

@@ -31,6 +31,10 @@ interface RawApiResponse {
   tractFips: string;
   hudYear: string;
   fmrYear: string;
+  // MSA percentile
+  msaPercentile: number | null;
+  msaTractCount: number | null;
+  cbsaName: string | null;
 }
 
 export interface AmiTableRow {

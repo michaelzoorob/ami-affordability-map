@@ -23,6 +23,9 @@ interface RawApiResponse {
   tractFips: string;
   hudYear: string;
   fmrYear: string;
+  msaPercentile: number | null;
+  msaTractCount: number | null;
+  cbsaName: string | null;
 }
 
 interface ComputedResult {
@@ -198,6 +201,13 @@ export default function ResultsPanel({
         <p className="text-xs text-amber-500 mt-1 italic">
           Based on all households in tract, regardless of size
         </p>
+        {rawData.msaPercentile !== null && rawData.msaTractCount !== null && (
+          <p className="text-xs text-amber-700 mt-1 font-medium">
+            Higher than {rawData.msaPercentile}% of{" "}
+            {rawData.msaTractCount.toLocaleString()} tracts in{" "}
+            {rawData.cbsaName} metro
+          </p>
+        )}
       </div>
 
       {/* Context: AMI and tract median */}
