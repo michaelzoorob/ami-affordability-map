@@ -74,6 +74,7 @@ function interpolatePercentAbove(
 }
 
 const AMI_PERCENTS = [30, 40, 50, 60, 70, 80, 90, 100, 110, 120, 130, 140, 150];
+const BEDROOM_LABELS = ["Studio", "1 BR", "2 BR", "3 BR", "4 BR"];
 
 function recalculate(
   rawData: RawApiResponse,
@@ -148,6 +149,13 @@ function recalculate(
   };
 }
 
+export interface ChoroplethResponse {
+  cbsaCode: string;
+  cbsaName: string;
+  tracts: [string, number, number[], number[] | null][];
+  geo: object | null;
+}
+
 export default function Home() {
   const [rawData, setRawData] = useState<RawApiResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -160,6 +168,30 @@ export default function Home() {
   const [currentAddress, setCurrentAddress] = useState<string | null>(null);
   const [initialAddress, setInitialAddress] = useState<string | undefined>(undefined);
   const initializedFromUrl = useRef(false);
+  const [choroplethData, setChoroplethData] = useState<ChoroplethResponse | null>(null);
+  const [choroplethLoading, setChoroplethLoading] = useState(false);
+  const [choroplethMetric, setChoroplethMetric] = useState<"affordability" | "percentile">("affordability");
+
+  // Fetch choropleth data in the background
+  const fetchChoropleth = useCallback(async (stateFips: string, countyFips: string) => {
+    setChoroplethLoading(true);
+    try {
+      const res = await fetch(
+        `/api/choropleth?stateFips=${stateFips}&countyFips=${countyFips}`
+      );
+      if (res.ok) {
+        const data = await res.json();
+        setChoroplethData(data);
+      } else {
+        // Non-MSA or error — just clear choropleth
+        setChoroplethData(null);
+      }
+    } catch {
+      setChoroplethData(null);
+    } finally {
+      setChoroplethLoading(false);
+    }
+  }, []);
 
   // Update URL query params whenever search state changes
   const updateUrl = useCallback(
@@ -192,12 +224,13 @@ export default function Home() {
       setRawData(data);
       setCurrentAddress(address);
       setMarkerPosition([data.lat, data.lng]);
+      fetchChoropleth(data.stateFips, data.countyFips);
     } catch {
       setError("Failed to connect to the server. Please try again.");
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [fetchChoropleth]);
 
   // Sync URL when search state changes
   useEffect(() => {
@@ -245,13 +278,14 @@ export default function Home() {
         setCurrentAddress(data.matchedAddress);
         setInitialAddress(data.matchedAddress);
         setMarkerPosition([data.lat, data.lng]);
+        fetchChoropleth(data.stateFips, data.countyFips);
       } catch {
         setError("Failed to look up this location. Please try again.");
       } finally {
         setIsLoading(false);
       }
     },
-    []
+    [fetchChoropleth]
   );
 
   const computed = useMemo(() => {
@@ -272,13 +306,70 @@ export default function Home() {
       </header>
 
       <div className="flex-1 flex flex-col md:flex-row overflow-hidden">
-        <div className="flex-1 min-h-[300px]">
+        <div className="flex-1 min-h-[300px] relative">
           <Map
             center={[39.8283, -98.5795]}
             markerPosition={markerPosition}
             markerLabel={rawData?.matchedAddress}
             onMapClick={handleMapClick}
+            choroplethData={choroplethData}
+            choroplethLoading={choroplethLoading}
+            bedroomIndex={bedrooms}
+            searchedTractFips={rawData ? `${rawData.stateFips}${rawData.countyFips}${rawData.tractFips}` : undefined}
+            fallbackFmr={rawData?.fmrByBedroom ?? null}
+            choroplethMetric={choroplethMetric}
           />
+          {choroplethData && choroplethData.geo && (
+            <div className="absolute bottom-4 right-4 z-[1000] bg-white rounded-lg shadow-lg p-3 text-xs max-w-[220px]">
+              <div className="flex gap-1 mb-2">
+                <button
+                  onClick={() => setChoroplethMetric("affordability")}
+                  className={`px-2 py-1 rounded text-xs font-medium ${
+                    choroplethMetric === "affordability"
+                      ? "bg-blue-600 text-white"
+                      : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                  }`}
+                >
+                  % Can Afford
+                </button>
+                <button
+                  onClick={() => setChoroplethMetric("percentile")}
+                  className={`px-2 py-1 rounded text-xs font-medium ${
+                    choroplethMetric === "percentile"
+                      ? "bg-blue-600 text-white"
+                      : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                  }`}
+                >
+                  MSA Percentile
+                </button>
+              </div>
+              <div className="flex items-center gap-0.5">
+                {[
+                  { color: "#d73027", label: "0" },
+                  { color: "#fc8d59", label: "20" },
+                  { color: "#fee08b", label: "40" },
+                  { color: "#91cf60", label: "60" },
+                  { color: "#1a9850", label: "80" },
+                ].map((item) => (
+                  <div key={item.color} className="flex flex-col items-center">
+                    <div
+                      className="w-6 h-3"
+                      style={{ backgroundColor: item.color }}
+                    />
+                    <span className="text-[10px] text-gray-600 mt-0.5">
+                      {item.label}%
+                    </span>
+                  </div>
+                ))}
+                <span className="text-[10px] text-gray-600 ml-0.5">100%</span>
+              </div>
+              <div className="text-[10px] text-gray-500 mt-1 leading-tight">
+                {choroplethMetric === "affordability"
+                  ? `% of households that can afford the ${BEDROOM_LABELS[bedrooms]} Small Area Fair Market Rent`
+                  : `Affordability percentile among all census tracts in the ${choroplethData.cbsaName} metro area`}
+              </div>
+            </div>
+          )}
         </div>
 
         <div className="md:w-96 p-4 overflow-y-auto bg-gray-50">
