@@ -171,6 +171,13 @@ export default function Home() {
   const [choroplethData, setChoroplethData] = useState<ChoroplethResponse | null>(null);
   const [choroplethLoading, setChoroplethLoading] = useState(false);
   const [choroplethMetric, setChoroplethMetric] = useState<"affordability" | "percentile">("affordability");
+  const [legendPos, setLegendPos] = useState<{ x: number; y: number } | null>(null);
+  const legendDragRef = useRef<{ startX: number; startY: number; origX: number; origY: number } | null>(null);
+
+  // Reset legend position when choropleth data changes (new search)
+  useEffect(() => {
+    setLegendPos(null);
+  }, [choroplethData]);
 
   // Fetch choropleth data in the background
   const fetchChoropleth = useCallback(async (stateFips: string, countyFips: string) => {
@@ -320,7 +327,49 @@ export default function Home() {
             choroplethMetric={choroplethMetric}
           />
           {choroplethData && choroplethData.geo && (
-            <div className="absolute bottom-4 right-4 z-[1000] bg-white rounded-lg shadow-lg p-3 text-xs max-w-[220px]">
+            <div
+              className={`z-[1000] bg-white rounded-lg shadow-lg p-3 text-xs max-w-[220px] select-none ${
+                legendPos ? "absolute" : "absolute bottom-4 right-4"
+              }`}
+              style={{
+                touchAction: "none",
+                cursor: legendDragRef.current ? "grabbing" : "grab",
+                ...(legendPos ? { left: legendPos.x, top: legendPos.y } : {}),
+              }}
+              onPointerDown={(e) => {
+                // Don't drag when clicking buttons
+                if ((e.target as HTMLElement).closest("button")) return;
+                e.preventDefault();
+                (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+                const rect = e.currentTarget.getBoundingClientRect();
+                const parentRect = e.currentTarget.parentElement!.getBoundingClientRect();
+                legendDragRef.current = {
+                  startX: e.clientX,
+                  startY: e.clientY,
+                  origX: rect.left - parentRect.left,
+                  origY: rect.top - parentRect.top,
+                };
+              }}
+              onPointerMove={(e) => {
+                if (!legendDragRef.current) return;
+                const parent = e.currentTarget.parentElement!;
+                const parentRect = parent.getBoundingClientRect();
+                const elRect = e.currentTarget.getBoundingClientRect();
+                const dx = e.clientX - legendDragRef.current.startX;
+                const dy = e.clientY - legendDragRef.current.startY;
+                const newX = Math.max(0, Math.min(legendDragRef.current.origX + dx, parentRect.width - elRect.width));
+                const newY = Math.max(0, Math.min(legendDragRef.current.origY + dy, parentRect.height - elRect.height));
+                setLegendPos({ x: newX, y: newY });
+              }}
+              onPointerUp={(e) => {
+                if (!legendDragRef.current) return;
+                (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
+                legendDragRef.current = null;
+              }}
+            >
+              <div className="flex items-center justify-center mb-1 text-gray-400 text-[10px] leading-none tracking-widest cursor-grab" aria-label="Drag to reposition">
+                ⠿
+              </div>
               <div className="flex gap-1 mb-2">
                 <button
                   onClick={() => setChoroplethMetric("affordability")}
