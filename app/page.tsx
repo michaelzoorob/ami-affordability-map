@@ -173,10 +173,12 @@ export default function Home() {
   const [choroplethMetric, setChoroplethMetric] = useState<"affordability" | "percentile">("affordability");
   const [legendPos, setLegendPos] = useState<{ x: number; y: number } | null>(null);
   const legendDragRef = useRef<{ startX: number; startY: number; origX: number; origY: number } | null>(null);
+  const [legendCollapsed, setLegendCollapsed] = useState(false);
 
-  // Reset legend position when choropleth data changes (new search)
+  // Reset legend position and collapse state when choropleth data changes (new search)
   useEffect(() => {
     setLegendPos(null);
+    setLegendCollapsed(false);
   }, [choroplethData]);
 
   // Fetch choropleth data in the background
@@ -328,9 +330,9 @@ export default function Home() {
           />
           {choroplethData && choroplethData.geo && (
             <div
-              className={`z-[1000] bg-white rounded-lg shadow-lg p-3 text-xs max-w-[220px] select-none ${
-                legendPos ? "absolute" : "absolute bottom-4 right-4"
-              }`}
+              className={`z-[1000] bg-white rounded-lg shadow-lg select-none ${
+                legendCollapsed ? "p-1.5" : "p-3 max-w-[220px]"
+              } ${legendPos ? "absolute" : "absolute bottom-4 right-4"}`}
               style={{
                 touchAction: "none",
                 cursor: legendDragRef.current ? "grabbing" : "grab",
@@ -367,56 +369,80 @@ export default function Home() {
                 legendDragRef.current = null;
               }}
             >
-              <div className="flex items-center justify-center mb-1 text-gray-400 text-[10px] leading-none tracking-widest cursor-grab" aria-label="Drag to reposition">
-                ⠿
-              </div>
-              <div className="flex gap-1 mb-2">
+              {legendCollapsed ? (
                 <button
-                  onClick={() => setChoroplethMetric("affordability")}
-                  className={`px-2 py-1 rounded text-xs font-medium ${
-                    choroplethMetric === "affordability"
-                      ? "bg-blue-600 text-white"
-                      : "bg-gray-100 text-gray-700 hover:bg-gray-200"
-                  }`}
+                  onClick={() => setLegendCollapsed(false)}
+                  className="flex items-center gap-1 px-1"
+                  aria-label="Expand legend"
                 >
-                  % Can Afford
+                  <div
+                    className="h-3 w-8 rounded-sm"
+                    style={{
+                      background: "linear-gradient(to right, #d73027, #fc8d59, #fee08b, #91cf60, #1a9850)",
+                    }}
+                  />
+                  <span className="text-[10px] text-gray-500">▲</span>
                 </button>
-                <button
-                  onClick={() => setChoroplethMetric("percentile")}
-                  className={`px-2 py-1 rounded text-xs font-medium ${
-                    choroplethMetric === "percentile"
-                      ? "bg-blue-600 text-white"
-                      : "bg-gray-100 text-gray-700 hover:bg-gray-200"
-                  }`}
-                >
-                  MSA Percentile
-                </button>
-              </div>
-              <div className="flex items-center gap-0.5">
-                {[
-                  { color: "#d73027", label: "0" },
-                  { color: "#fc8d59", label: "20" },
-                  { color: "#fee08b", label: "40" },
-                  { color: "#91cf60", label: "60" },
-                  { color: "#1a9850", label: "80" },
-                ].map((item) => (
-                  <div key={item.color} className="flex flex-col items-center">
-                    <div
-                      className="w-6 h-3"
-                      style={{ backgroundColor: item.color }}
-                    />
-                    <span className="text-[10px] text-gray-600 mt-0.5">
-                      {item.label}%
-                    </span>
+              ) : (
+                <>
+                  <div className="flex justify-end mb-1">
+                    <button
+                      onClick={() => setLegendCollapsed(true)}
+                      className="text-gray-400 hover:text-gray-600 text-xs leading-none px-1"
+                      aria-label="Collapse legend"
+                    >
+                      −
+                    </button>
                   </div>
-                ))}
-                <span className="text-[10px] text-gray-600 ml-0.5">100%</span>
-              </div>
-              <div className="text-[10px] text-gray-500 mt-1 leading-tight">
-                {choroplethMetric === "affordability"
-                  ? `% of households that can afford the ${BEDROOM_LABELS[bedrooms]} Small Area Fair Market Rent`
-                  : `Affordability percentile among all census tracts in the ${choroplethData.cbsaName} metro area`}
-              </div>
+                  <div className="flex gap-1 mb-2 text-xs">
+                    <button
+                      onClick={() => setChoroplethMetric("affordability")}
+                      className={`px-2 py-1 rounded text-xs font-medium ${
+                        choroplethMetric === "affordability"
+                          ? "bg-blue-600 text-white"
+                          : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                      }`}
+                    >
+                      % Can Afford
+                    </button>
+                    <button
+                      onClick={() => setChoroplethMetric("percentile")}
+                      className={`px-2 py-1 rounded text-xs font-medium ${
+                        choroplethMetric === "percentile"
+                          ? "bg-blue-600 text-white"
+                          : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                      }`}
+                    >
+                      MSA Percentile
+                    </button>
+                  </div>
+                  <div className="flex items-center gap-0.5">
+                    {[
+                      { color: "#d73027", label: "0" },
+                      { color: "#fc8d59", label: "20" },
+                      { color: "#fee08b", label: "40" },
+                      { color: "#91cf60", label: "60" },
+                      { color: "#1a9850", label: "80" },
+                    ].map((item) => (
+                      <div key={item.color} className="flex flex-col items-center">
+                        <div
+                          className="w-6 h-3"
+                          style={{ backgroundColor: item.color }}
+                        />
+                        <span className="text-[10px] text-gray-600 mt-0.5">
+                          {item.label}%
+                        </span>
+                      </div>
+                    ))}
+                    <span className="text-[10px] text-gray-600 ml-0.5">100%</span>
+                  </div>
+                  <div className="text-[10px] text-gray-500 mt-1 leading-tight">
+                    {choroplethMetric === "affordability"
+                      ? `% of households that can afford the ${BEDROOM_LABELS[bedrooms]} Small Area Fair Market Rent`
+                      : `Affordability percentile among all census tracts in the ${choroplethData.cbsaName} metro area`}
+                  </div>
+                </>
+              )}
             </div>
           )}
         </div>
