@@ -32,6 +32,11 @@ const TMP_DIR = join(ROOT, ".tmp-shp");
 const SHP_URL = "https://www2.census.gov/geo/tiger/GENZ2020/shp/cb_2020_us_tract_500k.zip";
 const ZIP_PATH = join(TMP_DIR, "cb_2020_us_tract_500k.zip");
 
+// NYC DCP shoreline-clipped census tracts (covers 5 NYC boroughs only)
+const NYC_DCP_TRACTS_URL = "https://data.cityofnewyork.us/resource/63ge-mke6.geojson?$limit=50000";
+const NYC_DCP_TRACTS_PATH = join(TMP_DIR, "nyc-dcp-tracts-2020.geojson");
+const NYC_COUNTY_FIPS = new Set(["36061", "36047", "36081", "36005", "36085"]);
+
 // Load county-to-CBSA mapping
 const countyToCbsa = JSON.parse(readFileSync(join(DATA_DIR, "county-to-cbsa.json"), "utf-8"));
 
@@ -47,6 +52,35 @@ async function downloadFile(url, destPath) {
   const fileStream = createWriteStream(destPath);
   await pipeline(Readable.fromWeb(res.body), fileStream);
   console.log(`Downloaded to ${destPath}`);
+}
+
+/**
+ * Download NYC DCP shoreline-clipped census tracts and return a Map of
+ * GEOID → GeoJSON geometry. These replace Census Bureau geometries for
+ * the 5 NYC counties to eliminate water-crossing slivers.
+ */
+async function loadNycDcpTracts() {
+  if (!existsSync(NYC_DCP_TRACTS_PATH)) {
+    console.log("Downloading NYC DCP shoreline-clipped census tracts...");
+    const res = await fetch(NYC_DCP_TRACTS_URL);
+    if (!res.ok) throw new Error(`NYC DCP download failed: ${res.status}`);
+    const text = await res.text();
+    writeFileSync(NYC_DCP_TRACTS_PATH, text);
+    console.log(`Saved NYC DCP tracts to ${NYC_DCP_TRACTS_PATH}`);
+  } else {
+    console.log(`Using cached NYC DCP tracts: ${NYC_DCP_TRACTS_PATH}`);
+  }
+
+  const geojson = JSON.parse(readFileSync(NYC_DCP_TRACTS_PATH, "utf-8"));
+  const geoidToGeometry = new Map();
+  for (const feature of geojson.features) {
+    const geoid = feature.properties.geoid || feature.properties.GEOID;
+    if (geoid && feature.geometry) {
+      geoidToGeometry.set(geoid, feature.geometry);
+    }
+  }
+  console.log(`Loaded ${geoidToGeometry.size} NYC DCP shoreline-clipped tracts`);
+  return geoidToGeometry;
 }
 
 async function main() {
@@ -110,7 +144,31 @@ async function main() {
   console.log(`Total tracts processed: ${count}`);
   console.log(`MSAs found: ${msaFeatures.size}`);
 
-  // Step 4: Convert each group to TopoJSON and save
+  // Step 4: Replace NYC tract geometries with DCP shoreline-clipped versions
+  const nycDcpTracts = await loadNycDcpTracts();
+  let nycReplaced = 0;
+  let nycMissing = 0;
+  for (const [, features] of msaFeatures) {
+    for (const feature of features) {
+      const geoid = feature.properties.GEOID;
+      const countyFips = geoid.substring(0, 5);
+      if (!NYC_COUNTY_FIPS.has(countyFips)) continue;
+
+      const dcpGeom = nycDcpTracts.get(geoid);
+      if (dcpGeom) {
+        feature.geometry = dcpGeom;
+        nycReplaced++;
+      } else {
+        nycMissing++;
+      }
+    }
+  }
+  console.log(`Replaced ${nycReplaced} NYC tract geometries with DCP shoreline-clipped versions`);
+  if (nycMissing > 0) {
+    console.log(`  (${nycMissing} NYC tracts not found in DCP data — kept Census geometry)`);
+  }
+
+  // Step 5: Convert each group to TopoJSON and save
   mkdirSync(OUT_DIR, { recursive: true });
 
   let saved = 0;
